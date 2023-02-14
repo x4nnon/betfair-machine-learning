@@ -1,0 +1,8 @@
+data
+.ipynb_checkpoints
+!horses_jul_wins/.gitkeep 
+__pycache__
+tom
+utils/config.py
+utils/x_train_df.csv
+utils/y_train_df.csv
