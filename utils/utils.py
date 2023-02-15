@@ -184,6 +184,7 @@ def train_model(
     )
 
     if m:
+        print("Model successfully loaded.")
         return m, clm, scaler
 
     else:
@@ -193,6 +194,7 @@ def train_model(
         m.fit(x_train_df, y_train_df)
         _ = joblib.dump(m, f"{model_path}{model}.pkl")
 
+        print("Model successfully trained and returned.")
         return m, clm, scaler
 
 
@@ -475,8 +477,3 @@ def normalized_transform(train_df, ticks_df):
     train_df = train_df.drop(["Unnamed: 0", "selection_ids", "market_id"], axis=1)
 
     return train_df
-
-
-if __name__ == "__main__":
-    df = pd.read_csv("utils/x_train_df.csv")
-    print(df)

@@ -146,7 +146,7 @@ class Onedrive:
 
         return train_df, test_df
 
-    def get_test_df(self, target_folder: str = "Analysis_files"):
+    def get_test_df(self, target_folder: str):
         test_df = pd.DataFrame()
         # Get test df
         for analysis_file in ANALYSIS_FILES_TEST:
@@ -170,7 +170,7 @@ class Onedrive:
 
         return train_df
 
-    def download_test_folder(self, target_folder: str = "horses_jul_wins", csv=False):
+    def download_test_folder(self, target_folder: str, csv=False):
 
         test_folder_names = self.get_folder_contents(
             target_folder=target_folder, only_folder_names=True, csv=csv

@@ -28,19 +28,12 @@ if __name__ == "__main__":
         client=clients.SimulatedClient(),
         test_folder_path=test_folder_path,
         bsps_path=bsps_path,
+        model_name="BayesianRidge",
     )
 
     # tracker = dict()
-    # with open("dummy_data/trascker.yaml", "r") as f:
+    # with open("dummy_data/tracker.yaml", "r") as f:
     #     tracker = yaml.safe_load(f)
 
-    # # Remove the extra entry from the dictionary
-    # tracker.pop(
-    #     "To use this data in a Python script, you can use a YAML library to read the data from the file and load it into a dictionary. Here's an example using the PyYAML library",
-    #     None,
-    # )
-    # print(tracker)
-    # # for key, item in tracker.items():
-    # #     print(f"{key}: {item}")
     # fig = plot_simulation_results(tracker, strategy)
     # plt.show()

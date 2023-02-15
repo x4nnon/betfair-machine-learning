@@ -18,4 +18,3 @@ total_q_incorrect: 2
 total_m_correct_margin: 300.25
 total_m_incorrect_margin: 100.50
 total_q_margin: 50.75
-To use this data in a Python script, you can use a YAML library to read the data from the file and load it into a dictionary. Here's an example using the PyYAML library:

@@ -8,6 +8,8 @@ from flumine import FlumineSimulation, BaseStrategy
 from pythonjsonlogger import jsonlogger
 from flumine.clients import SimulatedClient
 
+from utils.utils import train_model
+
 
 def run(strategy: Strategy1, client: SimulatedClient):
 
@@ -48,23 +50,35 @@ def run(strategy: Strategy1, client: SimulatedClient):
 
 
 def get_strategy(
-    strategy: str, market_file: List[str] | str, onedrive: Onedrive
+    strategy: str, market_file: List[str] | str, onedrive: Onedrive, model_name: str
 ) -> Strategy1:
 
-    strategy_pick = None
     market_file = market_file if isinstance(market_file, list) else [market_file]
+
+    ticks_df = onedrive.get_folder_contents(
+        target_folder="ticks", target_file="ticks.csv"
+    )
+    model, clm, scaler = train_model(
+        ticks_df,
+        onedrive,
+        model=model_name,
+    )
+    test_analysis_df = onedrive.get_test_df(target_folder="Analysis_files")
 
     if strategy == "Strategy1":
         strategy_pick = Strategy1(
-            onedrive=onedrive,
+            model=model,
+            ticks_df=ticks_df,
+            clm=clm,
+            scaler=scaler,
+            test_analysis_df=test_analysis_df,
             market_filter={"markets": market_file},
             max_trade_count=100000,
             max_live_trade_count=100000,
             max_order_exposure=10000,
             max_selection_exposure=100000,
         )
-
-    return strategy_pick
+        return strategy_pick
 
 
 def piped_run(
@@ -73,6 +87,7 @@ def piped_run(
     client: SimulatedClient,
     test_folder_path: str,
     bsps_path: str,
+    model_name: str,
 ):
     logger = logging.getLogger(__name__)
     custom_format = "%(asctime) %(levelname) %(message)"
@@ -113,7 +128,7 @@ def piped_run(
 
     if number_files == 0:
         print("Starting test folder download...")
-        onedrive.download_test_folder()
+        onedrive.download_test_folder(target_folder="horses_jul_wins")
         print("Test folder download finished.")
 
     file_paths = [
@@ -121,7 +136,7 @@ def piped_run(
         for f_name in test_folder_files
         if float(f_name) in bsp_df["EVENT_ID"].values
     ]
-    strategy_pick = get_strategy(strategy, file_paths, onedrive)
+    strategy_pick = get_strategy(strategy, file_paths, onedrive, model_name)
     results = run(strategy_pick, client)
     # process_run_results(results, tracker)
 
