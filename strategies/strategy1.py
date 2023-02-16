@@ -275,396 +275,230 @@ class Strategy1(BaseStrategy):
                     self.back_bet_tracker[market_id][runner.selection_id] = {}
                     self.matched_back_bet_tracker[market_id][runner.selection_id] = {}
 
-                    if runner.status == "ACTIVE":
-                        print("RUNNER is active.")
-                        try:
-                            (
-                                test_analysis_df,
-                                test_analysis_df_y,
-                            ) = self.__preprocess_test_analysis()
-                            # if bsps not available skip
-                            (
-                                runner_predicted_bsp,
-                                mean_120,
-                            ) = self.__get_model_prediction_and_mean_120(
-                                test_analysis_df, runner, market_id
+                    if not runner.status == "ACTIVE":
+                        continue
+                    print("RUNNER is active.")
+
+                    try:
+                        (
+                            test_analysis_df,
+                            test_analysis_df_y,
+                        ) = self.__preprocess_test_analysis()
+                        # if bsps not available skip
+                        (
+                            runner_predicted_bsp,
+                            mean_120,
+                        ) = self.__get_model_prediction_and_mean_120(
+                            test_analysis_df, runner, market_id
+                        )
+
+                    except Exception as e:
+                        error_message = f"An error occurred during preprocessing test_analysis_df and/or getting model prediction: {e.__class__.__name__}"
+                        print(f"{error_message} - {e}")
+                        runner_predicted_bsp = mean_120 = False
+
+                    if not mean_120:
+                        continue
+                        # in the back_price / number put in where you want to base from: prevoisly runner.last_price_traded
+                        # get_price(runner.ex.available_to_back, 1)
+                    try:
+                        (
+                            price_adjusted,
+                            confidence_price,
+                            bsp_value,
+                        ) = self.__get_back_lay(
+                            test_analysis_df_y, mean_120, runner, market_id
+                        )
+
+                        # SEND BACK BET ORDER
+                        if (
+                            (runner_predicted_bsp < confidence_price)
+                            and (mean_120 <= 50)
+                            and (mean_120 > 1.1)
+                            and not runner_in_back_tracker
+                        ):
+                            self.back_bet_tracker[market_id].setdefault(
+                                runner.selection_id, {}
+                            )
+                            self.matched_back_bet_tracker[market_id].setdefault(
+                                runner.selection_id, {}
+                            )
+                            self.__send_order(
+                                market_id,
+                                runner,
+                                price_adjusted,
+                                bsp_value,
+                                market,
+                                side="BACK",
                             )
 
-                        except Exception as e:
-                            error_message = f"An error occurred during preprocessing test_analysis_df and/or getting model prediction: {e.__class__.__name__}"
-                            print(f"{error_message} - {e}")
-                            runner_predicted_bsp = mean_120 = False
-
-                        if mean_120:
-                            # in the back_price / number put in where you want to base from: prevoisly runner.last_price_traded
-                            # get_price(runner.ex.available_to_back, 1)
-                            try:
-                                (
-                                    price_adjusted,
-                                    confidence_price,
-                                    bsp_value,
-                                ) = self.__get_back_lay(
-                                    test_analysis_df_y, mean_120, runner, market_id
-                                )
-
-                                # SEND BACK BET ORDER
-                                if (
-                                    (runner_predicted_bsp < confidence_price)
-                                    and (mean_120 <= 50)
-                                    and (mean_120 > 1.1)
-                                    and not runner_in_back_tracker
-                                ):
-                                    self.back_bet_tracker[market_id].setdefault(
-                                        runner.selection_id, {}
-                                    )
-                                    self.matched_back_bet_tracker[market_id].setdefault(
-                                        runner.selection_id, {}
-                                    )
-                                    self.__send_order(
-                                        market_id,
-                                        runner,
-                                        price_adjusted,
-                                        bsp_value,
-                                        market,
-                                        side="BACK",
-                                    )
-
-                                # SEND LAY BET ORDER
-                                if (
-                                    (runner_predicted_bsp > confidence_price)
-                                    and (price_adjusted <= self.stake)
-                                    and (price_adjusted > 1.1)
-                                    and not runner_in_lay_tracker
-                                ):
-                                    self.lay_bet_tracker[market_id].setdefault(
-                                        runner.selection_id, {}
-                                    )
-                                    self.matched_lay_bet_tracker[market_id].setdefault(
-                                        runner.selection_id, {}
-                                    )
-                                    self.__send_order(
-                                        market_id,
-                                        runner,
-                                        price_adjusted,
-                                        bsp_value,
-                                        market,
-                                        side="LAY",
-                                    )
-                            except Exception as e:
-                                error_message = f"An error occurred during order process: {e.__class__.__name__} - {e}"
-                                print(error_message)
+                        # SEND LAY BET ORDER
+                        if (
+                            (runner_predicted_bsp > confidence_price)
+                            and (price_adjusted <= self.stake)
+                            and (price_adjusted > 1.1)
+                            and not runner_in_lay_tracker
+                        ):
+                            self.lay_bet_tracker[market_id].setdefault(
+                                runner.selection_id, {}
+                            )
+                            self.matched_lay_bet_tracker[market_id].setdefault(
+                                runner.selection_id, {}
+                            )
+                            self.__send_order(
+                                market_id,
+                                runner,
+                                price_adjusted,
+                                bsp_value,
+                                market,
+                                side="LAY",
+                            )
+                    except Exception as e:
+                        error_message = f"An error occurred during order process: {e.__class__.__name__} - {e}"
+                        print(error_message)
 
     def process_orders(self, market: Market, orders: list) -> None:
-        # check our backs3
-        if len(self.back_bet_tracker.keys()) > 0:
-            del_list_back = []
-            for market_id in self.back_bet_tracker.keys():
-                for selection_id in self.back_bet_tracker[market_id].keys():
+        try:
+            for side in ["BACK", "LAY"]:
+                tracker = (
+                    self.back_bet_tracker if side == "BACK" else self.lay_bet_tracker
+                )
+                matched_tracker = (
+                    self.matched_back_bet_tracker
+                    if side == "BACK"
+                    else self.matched_lay_bet_tracker
+                )
+                if len(tracker.keys()) == 0:
+                    return
 
-                    if len(self.back_bet_tracker[market_id][selection_id]) != 0:
-                        order = self.back_bet_tracker[market_id][selection_id][0]
-                        if order.status == OrderStatus.EXECUTION_COMPLETE:
+                for market_id in tracker.keys():
+                    for selection_id in tracker[market_id].keys():
+                        if len(tracker[market_id][selection_id]) == 0:
+                            continue
+
+                        order = tracker[market_id][selection_id][0]
+
+                        if not order.status == OrderStatus.EXECUTION_COMPLETE:
+                            continue
+
+                        if not matched_tracker[market_id][selection_id]:
+                            matched_tracker[market_id][selection_id] = True
+
+                            # lay price adjusted or back price
+                            price = tracker[market_id][selection_id][-1]
+
+                            print(
+                                f"{side} matched order size is ",
+                                order.size_matched,
+                            )
+                            if side == "LAY":
+                                print(
+                                    f"Supposed layed size is: {round(self.stake / (price - 1), 2)}"
+                                )
+
                             if (
-                                self.matched_back_bet_tracker[market_id][selection_id]
-                                == False
-                            ):
-                                self.matched_back_bet_tracker[market_id][
-                                    selection_id
-                                ] = True
-                                backed_price = self.back_bet_tracker[market_id][
-                                    selection_id
-                                ][-1]
-
-                                # because 10 is the minimum liability for the bsp lay
-                                print("back MATCHED IS ", order.size_matched)
-                                if order.size_matched >= 10.00:  # because lowest amount
-                                    bsp_value = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][1]
-
-                                    if backed_price > bsp_value:
-                                        self.matched_correct += 1
-                                        self.back_matched_correct += 1
-                                        self.m_correct_margin += (
-                                            order.size_matched
-                                            * (backed_price - bsp_value)
-                                            / backed_price
-                                        )
-
-                                    else:
-                                        self.matched_incorrect += 1
-                                        self.back_matched_incorrect += 1
-                                        self.m_incorrect_margin += (
-                                            order.size_matched
-                                            * (backed_price - bsp_value)
-                                            / backed_price
-                                        )
-
-                                    # expected green margin
-                                    green_margin_add = (
-                                        order.size_matched
-                                        * (backed_price - bsp_value)
-                                        / backed_price
+                                (order.size_matched >= 10.00 and side == "BACK")
+                                or order.size_matched > 1
+                                and side == "LAY"
+                            ):  # because lowest amount
+                                bsp_value = tracker[market_id][selection_id][1]
+                                margin = (
+                                    (order.size_matched * (price - bsp_value) / price)
+                                    if side == "BACK"
+                                    else (
+                                        order.size_matched * (bsp_value - price) / price
                                     )
-
-                                    self.green_margin += green_margin_add
-
-                                    # collect for lay at bsp
-                                    market_id_ = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][2]
-                                    selection_id_ = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][3]
-                                    handicap_ = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][4]
-
-                                    # lay at BSP
-                                    trade2 = Trade(
-                                        market_id=market_id_,
-                                        selection_id=selection_id_,
-                                        handicap=handicap_,
-                                        strategy=self,
+                                )
+                                if (price > bsp_value and side == "BACK") or (
+                                    price < bsp_value and side == "LAY"
+                                ):
+                                    side_matched_correct = (
+                                        self.back_matched_correct
+                                        if side == "BACK"
+                                        else self.lay_matched_correct
                                     )
+                                    self.matched_correct += 1
+                                    side_matched_correct += 1
+                                    self.m_correct_margin += margin
 
-                                    order2 = trade2.create_order(
-                                        side="LAY",
-                                        order_type=MarketOnCloseOrder(
-                                            liability=order.size_matched
-                                        ),
+                                else:
+                                    side_matched_incorrect = (
+                                        self.back_matched_incorrect
+                                        if side == "BACK"
+                                        else self.lay_matched_incorrect
                                     )
+                                    self.matched_incorrect += 1
+                                    side_matched_incorrect += 1
+                                    self.m_incorrect_margin += margin
 
-                                    market.place_order(order2)
+                                self.green_margin += margin
+
+                                market_id_ = tracker[market_id][selection_id][2]
+                                selection_id_ = tracker[market_id][selection_id][3]
+                                handicap_ = tracker[market_id][selection_id][4]
+
+                                trade = Trade(
+                                    market_id=market_id_,
+                                    selection_id=selection_id_,
+                                    handicap=handicap_,
+                                    strategy=self,
+                                )
+                                order = trade.create_order(
+                                    side=side,
+                                    order_type=MarketOnCloseOrder(
+                                        liability=order.size_matched
+                                    ),
+                                )
+                                market.place_order(order)
 
                                 # Frees this up to be done again once we have greened.
                                 # !! unhash below and the horse del_list if you want to do more bets.
-                                #  del_list_back.append(selection_id)
-                                #  self.matched_back_bet_tracker[market_id][selection_id] = False
+                                # del_list_back.append(selection_id)
+                                # self.matched_back_bet_tracker[market_id][selection_id] = False
 
-                                elif order.size_matched != 0:
-                                    bsp_value = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][1]
-                                    backed_price = self.back_bet_tracker[market_id][
-                                        selection_id
-                                    ][-1]
-                                    self.amount_gambled += order.size_matched
-                                    self.matched_back_bet_tracker[market_id][
-                                        selection_id
-                                    ] = True
-                                    if backed_price > bsp_value:
+                            elif order.size_matched != 0:
+                                bsp_value = tracker[market_id][selection_id][1]
+                                backed_price = tracker[market_id][selection_id][-1]
+                                self.amount_gambled += order.size_matched
+                                self.matched_tracker[market_id][selection_id] = True
+
+                                if (price > bsp_value and side == "BACK") or (
+                                    price < bsp_value and side == "LAY"
+                                ):
+                                    self.matched_correct += 1
+                                    self.back_matched_correct += 1
+                                    self.m_correct_margin += margin
+                                else:
+                                    self.matched_incorrect += 1
+                                    self.back_matched_incorrect += 1
+                                    self.m_incorrect_margin += margin
+
+                            elif (order.status == OrderStatus.EXECUTABLE) & (
+                                order.size_matched != 0
+                            ):
+                                bsp_value = tracker[market_id][selection_id][1]
+                                price = tracker[market_id][selection_id][-1]
+                                if self.seconds_to_start < TIME_BEFORE_START:
+                                    self.amount_gambled += (
+                                        order.size_matched
+                                        if side == "LAY"
+                                        else order.size_matched * (price - 1)
+                                    )
+                                    if (price > bsp_value and side == "BACK") or (
+                                        price < bsp_value and side == "LAY"
+                                    ):
                                         self.matched_correct += 1
                                         self.back_matched_correct += 1
-                                        self.m_correct_margin += (
-                                            order.size_matched
-                                            * (backed_price - bsp_value)
-                                            / backed_price
-                                        )
+                                        self.m_correct_margin += margin
 
                                     else:
                                         self.matched_incorrect += 1
                                         self.back_matched_incorrect += 1
-                                        self.m_incorrect_margin += (
-                                            order.size_matched
-                                            * (backed_price - bsp_value)
-                                            / backed_price
-                                        )
+                                        self.m_incorrect_margin += margin
 
-                        elif (order.status == OrderStatus.EXECUTABLE) & (
-                            order.size_matched != 0
-                        ):
-                            bsp_value = self.back_bet_tracker[market_id][selection_id][
-                                1
-                            ]
-                            backed_price = self.back_bet_tracker[market_id][
-                                selection_id
-                            ][-1]
-                            if self.seconds_to_start < TIME_BEFORE_START:
-                                self.amount_gambled += order.size_matched
-                                if backed_price > bsp_value:
-                                    self.matched_correct += 1
-                                    self.back_matched_correct += 1
-                                    self.m_correct_margin += (
-                                        order.size_matched
-                                        * (backed_price - bsp_value)
-                                        / backed_price
-                                    )
-
-                                else:
-                                    self.matched_incorrect += 1
-                                    self.back_matched_incorrect += 1
-                                    self.m_incorrect_margin += (
-                                        order.size_matched
-                                        * (backed_price - bsp_value)
-                                        / backed_price
-                                    )
-
-                                market.cancel_order(order)
-                                self.matched_back_bet_tracker[market_id][
-                                    selection_id
-                                ] = True
-
-        # for horse in del_list_back:
-        # del self.back_bet_tracker[market_id][horse]
-
-        if len(self.lay_bet_tracker.keys()) > 0:
-            del_list_lay = []
-            for market_id in self.lay_bet_tracker.keys():
-                for selection_id in self.lay_bet_tracker[market_id].keys():
-                    if len(self.lay_bet_tracker[market_id][selection_id]) != 0:
-                        order = self.lay_bet_tracker[market_id][selection_id][0]
-                        if order.status == OrderStatus.EXECUTION_COMPLETE:
-                            if (
-                                self.matched_lay_bet_tracker[market_id][selection_id]
-                                == False
-                            ):
-                                self.matched_lay_bet_tracker[market_id][
-                                    selection_id
-                                ] = True
-
-                                lay_price_adjusted = self.lay_bet_tracker[market_id][
-                                    selection_id
-                                ][-1]
-
-                                # difference to look at
-                                layed_size = round(
-                                    self.stake / (lay_price_adjusted - 1), 2
-                                )
-                                print(
-                                    "in the lay order.size_matched is ",
-                                    order.size_matched,
-                                )
-                                print("supposed layed size ", layed_size)
-                                if (
-                                    order.size_matched > 1  # difference to look at
-                                ):  # because min liability on back is 1
-                                    bsp_value = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][1]
-                                    if lay_price_adjusted < bsp_value:
-                                        self.matched_correct += 1
-                                        self.lay_matched_correct += 1
-                                        self.m_correct_margin += (
-                                            order.size_matched
-                                            * (bsp_value - lay_price_adjusted)
-                                            / lay_price_adjusted
-                                        )
-
-                                    else:
-                                        self.matched_incorrect += 1
-                                        self.lay_matched_incorrect += 1
-                                        self.m_incorrect_margin += (
-                                            order.size_matched
-                                            * (bsp_value - lay_price_adjusted)
-                                            / lay_price_adjusted
-                                        )
-
-                                        # expected green margin
-                                    green_margin_add = (
-                                        order.size_matched
-                                        * (bsp_value - lay_price_adjusted)
-                                        / lay_price_adjusted
-                                    )
-
-                                    self.green_margin += green_margin_add
-
-                                    # collect for back at bsp
-                                    market_id_ = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][2]
-                                    selection_id_ = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][3]
-                                    handicap_ = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][4]
-
-                                    # back at BSP
-                                    trade3 = Trade(
-                                        market_id=market_id_,
-                                        selection_id=selection_id_,
-                                        handicap=handicap_,
-                                        strategy=self,
-                                    )
-
-                                    order3 = trade3.create_order(
-                                        side="BACK",
-                                        order_type=MarketOnCloseOrder(
-                                            liability=order.size_matched
-                                        ),
-                                    )
-
-                                    market.place_order(order3)
-
-                                # Frees this up to be done again
-
-                                # del_list_lay.append(selection_id)
-                                # self.matched_lay_bet_tracker[market_id][selection_id] = False
-
-                                elif (
-                                    order.size_matched != 0
-                                ):  # not remove all of this eventually this is just a trial
-                                    bsp_value = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][1]
-                                    lay_price = self.lay_bet_tracker[market_id][
-                                        selection_id
-                                    ][-1]
-                                    self.amount_gambled += order.size_matched * (
-                                        lay_price - 1
-                                    )  # diff
-                                    self.matched_lay_bet_tracker[market_id][
-                                        selection_id
-                                    ] = True
-                                    if lay_price < bsp_value:
-                                        self.matched_correct += 1
-                                        self.lay_matched_correct += 1
-                                        self.m_correct_margin += (
-                                            order.size_matched
-                                            * (bsp_value - lay_price_adjusted)
-                                            / lay_price_adjusted
-                                        )
-
-                                    else:
-                                        self.matched_incorrect += 1
-                                        self.lay_matched_incorrect += 1
-                                        self.m_incorrect_margin += (
-                                            order.size_matched
-                                            * (bsp_value - lay_price_adjusted)
-                                            / lay_price_adjusted
-                                        )
-
-                        elif (order.status == OrderStatus.EXECUTABLE) & (
-                            order.size_matched != 0
-                        ):
-                            bsp_value = self.lay_bet_tracker[market_id][selection_id][1]
-                            lay_price = self.lay_bet_tracker[market_id][selection_id][
-                                -1
-                            ]
-                            if self.seconds_to_start < TIME_BEFORE_START:
-                                self.amount_gambled += order.size_matched * (
-                                    lay_price - 1
-                                )
-                                if lay_price < bsp_value:
-                                    self.matched_correct += 1
-                                    self.lay_matched_correct += 1
-                                    self.m_correct_margin += (
-                                        order.size_matched
-                                        * (bsp_value - lay_price_adjusted)
-                                        / lay_price_adjusted
-                                    )
-
-                                else:
-                                    self.matched_incorrect += 1
-                                    self.lay_matched_incorrect += 1
-                                    self.m_incorrect_margin += (
-                                        order.size_matched
-                                        * (bsp_value - lay_price_adjusted)
-                                        / lay_price_adjusted
-                                    )
-
-                                market.cancel_order(order)
-                                self.matched_lay_bet_tracker[market_id][
-                                    selection_id
-                                ] = True
+                                    market.cancel_order(order)
+                                    matched_tracker[market_id][selection_id] = True
+        except Exception as e:
+            print(f"Exception during process orders function execution: {e}")
+            # for horse in del_list_back:
+            # del self.back_bet_tracker[market_id][horse]s
