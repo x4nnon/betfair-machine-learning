@@ -11,22 +11,40 @@ import seaborn as sns
 from onedrive import Onedrive
 
 
-def process_run_results(results: dict, metrics: dict):
+# def update_tracker(tracker, metrics):
+#     tracker['race_counter'] += 1
+
+#     for key, metric in tracker.items() - [
+#         "actual_profit_plotter",
+#         "expected_profit_plotter",
+#         "green_plotter",
+#         "race_counter",
+#     ]:
+
+#     tracker["green_plotter"].append(total_green)
+
+#     tracker["actual_profit_plotter"].append(profit)
+#     metrics["expected_profit_plotter"].append(
+#         strategy.metrics["m_c_marg"] + strategy.metrics["m_i_marg"]
+#     )  #
+
+
+def process_run_results(results: dict, tracker: dict):
     def print_add(x: int, y: int, msg: str):
         x += y
         print(x, msg)
 
     prev_key = ""
-    for key, item in metrics.items():
+    for key, item in tracker.items():
 
         if isinstance(item, list):
             if "actual" in key:
-                item.append(metrics["total_profit"])
+                item.append(tracker["total_profit"])
             if "expected" in key:
-                item.append(metrics["total_m_c_marg"] + metrics["total_m_i_marg"])
+                item.append(tracker["total_m_c_marg"] + tracker["total_m_i_marg"])
 
             if "green" in key:
-                item.append(metrics["total_green_margin"])
+                item.append(tracker["total_green_margin"])
         else:
             name_lst = key.split("_")
 
@@ -37,7 +55,7 @@ def process_run_results(results: dict, metrics: dict):
                 continue
 
             if result_key == "counter":
-                print(f"Race: {metrics[key]}")
+                print(f"Race: {tracker[key]}")
                 continue
 
             result = results[result_key]
@@ -56,17 +74,17 @@ def process_run_results(results: dict, metrics: dict):
 
         prev_key = key
 
-    if metrics["race_counter"] % 10 == 0:
+    if tracker["race_counter"] % 10 == 0:
         # plt.plot(range(race_counter), actual_profit_plotter, label="backtest", color="b")
         plt.plot(
-            range(metrics["race_counter"]),
-            metrics["expected_profit_plotter"],
+            range(tracker["race_counter"]),
+            tracker["expected_profit_plotter"],
             label="expected",
             color="y",
         )
         plt.plot(
-            range(metrics["race_counter"]),
-            metrics["green_plotter"],
+            range(tracker["race_counter"]),
+            tracker["green_plotter"],
             label="greened_profit",
             color="g",
         )
@@ -77,6 +95,8 @@ def process_run_results(results: dict, metrics: dict):
         plt.legend()
         plt.draw()
         print("")
+
+    tracker["race_counter"] += 1
 
 
 def rms(y, y_pred):

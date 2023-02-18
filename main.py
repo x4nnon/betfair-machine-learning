@@ -19,7 +19,7 @@ if __name__ == "__main__":
     strategy = "Strategy1"
 
     tracker = piped_run(
-        strategy="Strategy1",
+        strategy=strategy,
         onedrive=Onedrive(
             client_id=app_principal["client_id"],
             client_secret=app_principal["client_secret"],
@@ -29,8 +29,10 @@ if __name__ == "__main__":
         test_folder_path=test_folder_path,
         bsps_path=bsps_path,
         model_name="BayesianRidge",
+        test_run=True,
     )
-
+    with open(f"{strategy}_results.yaml", "w") as f:
+        yaml.dump(tracker, f)
     # tracker = dict()
     # with open("dummy_data/tracker.yaml", "r") as f:
     #     tracker = yaml.safe_load(f)

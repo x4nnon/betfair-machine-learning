@@ -49,41 +49,26 @@ class Strategy1(BaseStrategy):
         self.order_dict_back = {}
         self.order_dict_lay = {}
         self.LP_traded = {}
-        self.matched_correct = 0
-        self.matched_incorrect = 0
-        self.q_correct = 0
-        self.q_incorrect = 0
-        self.m_incorrect_margin = 0
-        self.m_correct_margin = 0
-        self.green_margin = 0
         self.seconds_to_start = None
-        self.green_orders = []
-        self.normal_orders = []
-        self.amount_gambled = 0
         self.market_open = True
         self.stake = 50  # @WHAT IS THIS
         self.first_nonrunners = True
         self.runner_number = None
-        self.lay_matched_correct = 0
-        self.back_matched_correct = 0
-        self.lay_matched_incorrect = 0
-        self.back_matched_incorrect = 0
-        self.q_margin = 0
         self.metrics = {
             "profit": 0,
-            "q_correct": self.q_correct,
-            "q_incorrect": self.q_incorrect,
-            "matched_correct": self.matched_correct,
-            "matched_incorrect": self.matched_incorrect,
-            "m_correct_margin": self.m_correct_margin,
-            "m_incorrect_margin": self.m_incorrect_margin,
-            "green_margin": self.green_margin,
-            "amount_gambled": self.amount_gambled,
-            "lay_matched_correct": self.lay_matched_correct,
-            "lay_matched_incorrect": self.lay_matched_incorrect,
-            "back_matched_correct": self.back_matched_correct,
-            "back_matched_incorrect": self.back_matched_incorrect,
-            "q_margin": self.q_margin,
+            "q_correct": 0,
+            "q_incorrect": 0,
+            "matched_correct": 0,
+            "matched_incorrect": 0,
+            "m_correct_margin": 0,
+            "m_incorrect_margin": 0,
+            "green_margin": 0,
+            "amount_gambled": 0,
+            "lay_matched_correct": 0,
+            "lay_matched_incorrect": 0,
+            "back_matched_correct": 0,
+            "back_matched_incorrect": 0,
+            "q_margin": 0,
         }
 
     def set_market_filter(self, market_filter: Union[dict, list]) -> None:
@@ -138,9 +123,9 @@ class Strategy1(BaseStrategy):
         )
 
         if price_adjusted > bsp_value:
-            self.q_correct += 1
+            self.metrics["q_correct"] += 1
         else:
-            self.q_incorrect += 1
+            self.metrics["q_incorrect"] += 1
 
         size = (
             self.stake
@@ -157,7 +142,7 @@ class Strategy1(BaseStrategy):
         )
 
         print(
-            f"{side} bet order created with: \n{side} price adjusted {price_adjusted}\norder size {size}"
+            f"{side} bet order created at {self.seconds_to_start} seconds to start: \n\t{side} price adjusted: {price_adjusted}\n\tOrder size: {size}"
         )
         tracker = self.back_bet_tracker if side == "BACK" else self.lay_bet_tracker
         tracker[market_id][runner.selection_id] = [
@@ -180,7 +165,7 @@ class Strategy1(BaseStrategy):
 
         market.place_order(order)
 
-        self.q_margin += size * (price_adjusted - bsp_value) / price_adjusted
+        self.metrics["q_margin"] += size * (price_adjusted - bsp_value) / price_adjusted
 
     def __preprocess_test_analysis(self):
         test_analysis_df = self.test_analysis_df.dropna()
@@ -272,12 +257,12 @@ class Strategy1(BaseStrategy):
                     runner.selection_id in self.lay_bet_tracker[market_id].keys()
                 )
                 if not runner_in_back_tracker or not runner_in_lay_tracker:
-                    self.back_bet_tracker[market_id][runner.selection_id] = {}
-                    self.matched_back_bet_tracker[market_id][runner.selection_id] = {}
+                    # self.back_bet_tracker[market_id][runner.selection_id] = {}
+                    # self.matched_back_bet_tracker[market_id][runner.selection_id] = {}
 
                     if not runner.status == "ACTIVE":
                         continue
-                    print("RUNNER is active.")
+                    # print("RUNNER is active.")
 
                     try:
                         (
@@ -293,9 +278,12 @@ class Strategy1(BaseStrategy):
                         )
 
                     except Exception as e:
-                        error_message = f"An error occurred during preprocessing test_analysis_df and/or getting model prediction: {e.__class__.__name__}"
-                        print(f"{error_message} - {e}")
-                        runner_predicted_bsp = mean_120 = False
+                        if isinstance(e, IndexError):
+                            runner_predicted_bsp = mean_120 = False
+                        else:
+                            error_message = f"An error occurred during preprocessing test_analysis_df and/or getting model prediction: {e.__class__.__name__}"
+                            print(f"{error_message} - {e}")
+                            runner_predicted_bsp = mean_120 = False
 
                     if not mean_120:
                         continue
@@ -358,8 +346,10 @@ class Strategy1(BaseStrategy):
                         print(error_message)
 
     def process_orders(self, market: Market, orders: list) -> None:
+        sides = ["BACK", "LAY"]
         try:
-            for side in ["BACK", "LAY"]:
+            for side in sides:
+
                 tracker = (
                     self.back_bet_tracker if side == "BACK" else self.lay_bet_tracker
                 )
@@ -387,13 +377,13 @@ class Strategy1(BaseStrategy):
                             # lay price adjusted or back price
                             price = tracker[market_id][selection_id][-1]
 
+                            # NOTE an order got matched at   -seconds_to_start - FIX?
                             print(
-                                f"{side} matched order size is ",
-                                order.size_matched,
+                                f"{side} matched at {self.seconds_to_start} seconds to start: \n\tOrder size: {order.size_matched}"
                             )
                             if side == "LAY":
                                 print(
-                                    f"Supposed layed size is: {round(self.stake / (price - 1), 2)}"
+                                    f"\tSupposed layed size: {round(self.stake / (price - 1), 2)}"
                                 )
 
                             if (
@@ -413,25 +403,25 @@ class Strategy1(BaseStrategy):
                                     price < bsp_value and side == "LAY"
                                 ):
                                     side_matched_correct = (
-                                        self.back_matched_correct
+                                        self.metrics["back_matched_correct"]
                                         if side == "BACK"
-                                        else self.lay_matched_correct
+                                        else self.metrics["lay_matched_correct"]
                                     )
-                                    self.matched_correct += 1
+                                    self.metrics["matched_correct"] += 1
                                     side_matched_correct += 1
-                                    self.m_correct_margin += margin
+                                    self.metrics["m_correct_margin"] += margin
 
                                 else:
                                     side_matched_incorrect = (
-                                        self.back_matched_incorrect
+                                        self.metrics["back_matched_incorrect"]
                                         if side == "BACK"
-                                        else self.lay_matched_incorrect
+                                        else self.metrics["lay_matched_incorrect"]
                                     )
-                                    self.matched_incorrect += 1
+                                    self.metrics["matched_incorrect"] += 1
                                     side_matched_incorrect += 1
-                                    self.m_incorrect_margin += margin
+                                    self.metrics["m_incorrect_margin"] += margin
 
-                                self.green_margin += margin
+                                self.metrics["green_margin"] += margin
 
                                 market_id_ = tracker[market_id][selection_id][2]
                                 selection_id_ = tracker[market_id][selection_id][3]
@@ -459,19 +449,19 @@ class Strategy1(BaseStrategy):
                             elif order.size_matched != 0:
                                 bsp_value = tracker[market_id][selection_id][1]
                                 backed_price = tracker[market_id][selection_id][-1]
-                                self.amount_gambled += order.size_matched
+                                self.metrics["amount_gambled"] += order.size_matched
                                 self.matched_tracker[market_id][selection_id] = True
 
                                 if (price > bsp_value and side == "BACK") or (
                                     price < bsp_value and side == "LAY"
                                 ):
-                                    self.matched_correct += 1
-                                    self.back_matched_correct += 1
-                                    self.m_correct_margin += margin
+                                    self.metrics["matched_correct"] += 1
+                                    self.metrics["back_matched_correct"] += 1
+                                    self.metrics["m_correct_margin"] += margin
                                 else:
-                                    self.matched_incorrect += 1
-                                    self.back_matched_incorrect += 1
-                                    self.m_incorrect_margin += margin
+                                    self.metrics["matched_incorrect"] += 1
+                                    self.metrics["back_matched_incorrect"] += 1
+                                    self.metrics["m_incorrect_margin"] += margin
 
                             elif (order.status == OrderStatus.EXECUTABLE) & (
                                 order.size_matched != 0
@@ -479,7 +469,7 @@ class Strategy1(BaseStrategy):
                                 bsp_value = tracker[market_id][selection_id][1]
                                 price = tracker[market_id][selection_id][-1]
                                 if self.seconds_to_start < TIME_BEFORE_START:
-                                    self.amount_gambled += (
+                                    self.metrics["amount_gambled"] += (
                                         order.size_matched
                                         if side == "LAY"
                                         else order.size_matched * (price - 1)
@@ -487,14 +477,14 @@ class Strategy1(BaseStrategy):
                                     if (price > bsp_value and side == "BACK") or (
                                         price < bsp_value and side == "LAY"
                                     ):
-                                        self.matched_correct += 1
-                                        self.back_matched_correct += 1
-                                        self.m_correct_margin += margin
+                                        self.metrics["matched_correct"] += 1
+                                        self.metrics["back_matched_correct"] += 1
+                                        self.metrics["m_correct_margin"] += margin
 
                                     else:
-                                        self.matched_incorrect += 1
-                                        self.back_matched_incorrect += 1
-                                        self.m_incorrect_margin += margin
+                                        self.metrics["matched_incorrect"] += 1
+                                        self.metrics["back_matched_incorrect"] += 1
+                                        self.metrics["m_incorrect_margin"] += margin
 
                                     market.cancel_order(order)
                                     matched_tracker[market_id][selection_id] = True
