@@ -1,5 +1,6 @@
 import copy
 import os
+from pprint import pprint
 import joblib
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -9,24 +10,39 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, mean_absolute_error as mae
 import seaborn as sns
 from onedrive import Onedrive
+from sklearn.metrics import (
+    mean_squared_error as mse,
+    mean_absolute_error as mae,
+    r2_score,
+)
 
 
-# def update_tracker(tracker, metrics):
-#     tracker['race_counter'] += 1
+def rms(y_pred, y):
+    rms = np.sqrt(np.mean((y - y_pred) ** 2))
+    return rms
 
-#     for key, metric in tracker.items() - [
-#         "actual_profit_plotter",
-#         "expected_profit_plotter",
-#         "green_plotter",
-#         "race_counter",
-#     ]:
 
-#     tracker["green_plotter"].append(total_green)
+def update_tracker(tracker: dict, metrics: dict):
+    for key, item in tracker.items():
+        name_lst = key.split("_")
+        m_key = "_".join(name_lst[1:])
 
-#     tracker["actual_profit_plotter"].append(profit)
-#     metrics["expected_profit_plotter"].append(
-#         strategy.metrics["m_c_marg"] + strategy.metrics["m_i_marg"]
-#     )  #
+        if key == "race_counter":
+            continue
+
+        if not isinstance(item, list):
+            tracker[key] += metrics[m_key]
+
+        if isinstance(item, list):
+            if "actual" in key:
+                item.append(tracker["total_profit"])
+            elif "expected" in key:
+                item.append(tracker["total_m_c_margin"] + tracker["total_m_i_margin"])
+            elif "green" in key:
+                item.append(tracker["total_green_margin"])
+
+    tracker["race_counter"] += 1
+    return tracker
 
 
 def process_run_results(results: dict, tracker: dict):
@@ -36,7 +52,6 @@ def process_run_results(results: dict, tracker: dict):
 
     prev_key = ""
     for key, item in tracker.items():
-
         if isinstance(item, list):
             if "actual" in key:
                 item.append(tracker["total_profit"])
@@ -99,13 +114,17 @@ def process_run_results(results: dict, tracker: dict):
     tracker["race_counter"] += 1
 
 
-def rms(y, y_pred):
-    rms = np.sqrt(np.mean((y - y_pred) ** 2))
-    return rms
+# def rms(y, y_pred):
+#     rms = np.sqrt(np.mean((y - y_pred) ** 2))
+#     return rms
 
 
-def plot_simulation_results(
-    tracker: dict, strategy: str, style="darkgrid", palette="dark"
+def get_simulation_plot(
+    tracker: dict,
+    strategy_name: str,
+    fig_size=(10, 6),
+    style="darkgrid",
+    palette="dark",
 ):
     sns.set_style(style)
     sns.set_palette(palette)
@@ -113,17 +132,18 @@ def plot_simulation_results(
     profit_tracker, val_tracker = {}, {}
     for key, value in tracker.items():
         if key in ["actual_profit_plotter", "expected_profit_plotter", "green_plotter"]:
+            print("here")
             profit_tracker[key] = value
         else:
             val_tracker[key] = value
 
     # Create a DataFrame for the val_tracker dictionary
     df = pd.DataFrame.from_dict(val_tracker, orient="index")
-    print(df)
 
-    fig = sns.lineplot(data=profit_tracker)
-    fig.set(
-        title=f"Simulation Results: {strategy}",
+    fig, ax = plt.subplots(figsize=fig_size)
+    sns.lineplot(data=profit_tracker, ax=ax)
+    ax.set(
+        title=f"Simulation Results: {strategy_name}",
         xlabel="Number of Races",
         ylabel="Profit",
     )
@@ -133,7 +153,7 @@ def plot_simulation_results(
     return fig
 
 
-def train_model(
+def train_test_model(
     ticks_df: pd.DataFrame,
     onedrive: Onedrive,
     model: str,
@@ -152,6 +172,7 @@ def train_model(
         if os.path.exists(y_train_path)
         else None
     )
+    mean120_train_df = None
 
     if x_train_df is None or y_train_df is None:
         print(
@@ -194,6 +215,10 @@ def train_model(
     scaler = StandardScaler()
     x_train_df = pd.DataFrame(scaler.fit_transform(x_train_df), columns=clm)
 
+    mean120_train_df = (
+        mean120_train_df if not mean120_train_df is None else x_train_df["mean_120"]
+    )
+
     if not os.path.exists(x_train_path):
         x_train_df.to_csv(x_train_path, index=False)
 
@@ -207,18 +232,34 @@ def train_model(
         print("Model successfully loaded.")
         return m, clm, scaler
 
-    else:
-        print(f"Commencing model training: {model}...")
+    print(f"Commencing model training: {model}...")
 
-        m = BayesianRidge() if model == "BayesianRidge" else BayesianRidge()
-        m.fit(x_train_df, y_train_df)
-        _ = joblib.dump(m, f"{model_path}{model}.pkl")
+    m = (
+        BayesianRidge() if model == "BayesianRidge" else BayesianRidge()
+    )  # TODO need to change this
+    m.fit(x_train_df, y_train_df.values.ravel())
+    _ = joblib.dump(m, f"{model_path}{model}.pkl")
 
-        print("Model successfully trained and returned.")
-        return m, clm, scaler
+    print("Model successfully trained")
+    test_df = onedrive.get_test_df()
+    test_model(
+        ticks_df, m, scaler, clm, x_train_df, y_train_df, mean120_train_df, test_df
+    )
+
+    return m, clm, scaler
 
 
-def test_model():
+def test_model(
+    ticks_df,
+    model,
+    scaler,
+    clm,
+    x_train_df,
+    y_train_df,
+    mean120_train_df,
+    test_analysis_df,
+    regression=True,
+):
     test_analysis_df = test_analysis_df.dropna()
     test_analysis_df = test_analysis_df[
         (test_analysis_df["mean_120"] <= 50) & (test_analysis_df["mean_120"] > 1.1)
@@ -259,137 +300,43 @@ def test_model():
     x_test_df = pd.DataFrame(scaler.transform(x_test_df), columns=clm)
 
     # test_analysis_df = test_analysis_df.drop(["bsps"], axis=1)
-
-    #################################################
-    # ALL BELOW IS JUST TO CONFIRM IT IS FIT CORRECT:
     y_pred_train = model.predict(x_train_df)
     y_pred_test = model.predict(x_test_df)
 
-    print(y_pred_test)
-    print(y_test_df)
+    metrics = {
+        "mse": {
+            "train": mse(y_pred_train, y_train_df),
+            "train_mean_120": mse(mean120_train_df, y_train_df),
+            "test": mse(y_pred_test, y_test_df),
+            "test_mean_120": mse(mean120_test_df, y_test_df),
+        },
+        "mae": {
+            "train": mae(y_pred_train, y_train_df),
+            "train_mean_120": mae(mean120_train_df, y_train_df),
+            "test": mae(y_pred_test, y_test_df),
+            "test_mean_120": mae(mean120_test_df, y_test_df),
+        },
+        # "rms": {
+        #     "train": rms(y_pred_train, y_train_df),
+        #     "test_mean_120": rms(mean120_train_df, y_train_df),
+        #     "test": rms(y_pred_test, y_test_df),
+        #     "test_mean_120": rms(mean120_test_df, y_test_df),
+        # },
+        "rmse": {
+            "train": mse(y_pred_train, y_train_df, squared=False),
+            "train_mean_120": mse(mean120_train_df, y_train_df, squared=False),
+            "test": mse(y_pred_test, y_test_df, squared=False),
+            "test_mean_120": mse(mean120_test_df, y_test_df, squared=False),
+        },
+        "r2_score": {
+            "train": r2_score(y_pred_train, y_train_df),
+            "train_mean_120": r2_score(mean120_train_df, y_train_df),
+            "test": r2_score(y_pred_test, y_test_df),
+            "test_mean_120": r2_score(mean120_test_df, y_test_df),
+        },
+    }
 
-    results_train_mae = mae(y_train_df, y_pred_train)
-
-    print("MAE train : ", results_train_mae)
-
-    results_test_mae = mae(y_test_df, y_pred_test)
-
-    print("MAE test : ", results_test_mae)
-
-    if not regression:
-        (tn, fp, fn, tp) = confusion_matrix(y_test_df, y_pred_test).ravel()
-        print("- tn:", tn, "- fp:", fp, "- fn:", fn, "- tp:", tp)
-
-        confidence = 0.6
-
-        print("with a confidence probability of above ", confidence)
-
-        y_pred_train_proba = model.predict_proba(x_train_df)
-        y_pred_test_proba = model.predict_proba(x_test_df)
-
-        neg_pred_after_conf_train = []
-        neg_corresponding_label_train = []
-
-        pos_pred_after_conf_train = []
-        pos_corresponding_label_train = []
-
-        for i in range(len(y_pred_train_proba)):
-            if y_pred_train_proba[i][0] > confidence:
-                neg_pred_after_conf_train.append(0)
-                neg_corresponding_label_train.append(y_train_df.values[i])
-            elif y_pred_train_proba[i][1] > confidence:
-                pos_pred_after_conf_train.append(1)
-                pos_corresponding_label_train.append(y_train_df.values[i])
-
-        print()
-        results_train_mae_neg = mae(
-            neg_pred_after_conf_train, neg_corresponding_label_train
-        )
-        results_train_mae_pos = mae(
-            pos_pred_after_conf_train, pos_corresponding_label_train
-        )
-
-        print("MAE conf train neg: ", results_train_mae_neg)
-        print("MAE conf train pos : ", results_train_mae_pos)
-
-        neg_pred_after_conf_test = []
-        neg_corresponding_label_test = []
-
-        pos_pred_after_conf_test = []
-        pos_corresponding_label_test = []
-
-        margin = 0
-        print("mean_120_actual -------------")
-        print(mean120_test_df)
-        print("bsps_actual ------------------")
-        print(bsp_actual_test)
-
-        for i in range(len(y_pred_test_proba)):
-            if y_pred_test_proba[i][0] > confidence:
-                neg_pred_after_conf_test.append(0)
-                neg_corresponding_label_test.append(y_test_df.values[i])
-                margin_calc = (
-                    (50 / mean120_actual_test.values[i])
-                    * (bsp_actual_test.values[i] - mean120_actual_test.values[i])
-                    / mean120_actual_test.values[i]
-                )
-                margin += margin_calc
-            elif y_pred_test_proba[i][1] > confidence:
-                pos_pred_after_conf_test.append(1)
-                pos_corresponding_label_test.append(y_test_df.values[i])
-                margin_calc = (
-                    50
-                    * (-bsp_actual_test.values[i] + mean120_actual_test.values[i])
-                    / mean120_actual_test.values[i]
-                )
-                margin += margin_calc
-
-        print()
-        results_test_mae_neg = mae(
-            neg_pred_after_conf_test, neg_corresponding_label_test
-        )
-        results_test_mae_pos = mae(
-            pos_pred_after_conf_test, pos_corresponding_label_test
-        )
-
-        print("MAE conf test neg: ", results_test_mae_neg)
-        print("MAE conf test pos : ", results_test_mae_pos)
-
-        print("confusion for neg")
-        (tn, fp, fn, tp) = confusion_matrix(
-            neg_corresponding_label_test, neg_pred_after_conf_test
-        ).ravel()
-        print("- tn:", tn, "- fp:", fp, "- fn:", fn, "- tp:", tp)
-
-        print("confusion for pos")
-        (tn, fp, fn, tp) = confusion_matrix(
-            pos_corresponding_label_test, pos_pred_after_conf_test
-        ).ravel()
-        print("- tn:", tn, "- fp:", fp, "- fn:", fn, "- tp:", tp)
-
-        print("margin for final is :", margin, "stop")
-
-        print("test_analysis_df")
-        print(test_analysis_df["mean_120"])
-
-    else:
-        y_pred_train = model.predict(x_train_df)
-        y_pred_test = model.predict(x_test_df)
-        print("regression results are")
-
-        print()
-        results_train_mae = mae(y_pred_train, y_train_df)
-        results_test_mae = mae(y_pred_test, y_test_df)
-
-        print("MAE train: ", results_train_mae)
-        print("MAE test : ", results_test_mae)
-
-        results_train_at_mean_120 = mae(mean120_train_df, y_train_df)
-        results_test_at_mean_120 = mae(mean120_test_df, y_test_df)
-
-        print("if chosen at mean 120")
-        print("MAE train - 120 : ", results_train_at_mean_120)
-        print("MAE test - 120 : ", results_test_at_mean_120)
+    pprint(metrics)
 
     return model, test_analysis_df, scaler, clm, test_analysis_df_y
 

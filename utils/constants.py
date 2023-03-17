@@ -19,7 +19,7 @@ FIELD_NAMES = [
 ]
 
 # Hyperparam for sorting out the end
-TIME_BEFORE_START = 10
+TIME_BEFORE_START = 15
 
 ANALYSIS_FILES_TRAIN = [
     "jan20_analysis_direct_nr0_100_50_many_wom.csv",

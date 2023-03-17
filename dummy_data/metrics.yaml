@@ -1,0 +1,14 @@
+profit: 150.25
+q_correct: 25
+q_incorrect: 5
+matched_correct: 40
+matched_incorrect: 10
+m_c_margin: 20.5
+m_i_margin: 5.75
+green_margin: 30.25
+amount_gambled: 500
+lay_matched_correct: 15
+lay_matched_incorrect: 5
+back_matched_correct: 25
+back_matched_incorrect: 7
+q_margin: 12.5

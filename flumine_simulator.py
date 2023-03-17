@@ -1,18 +1,19 @@
 import logging
 import os
 import time
-from typing import List
+from pprint import pprint
+
+import yaml
 from onedrive import Onedrive
 from strategies.strategy1 import Strategy1
-from flumine import FlumineSimulation, BaseStrategy
+from flumine import FlumineSimulation
 from pythonjsonlogger import jsonlogger
 from flumine.clients import SimulatedClient
 
-from utils.utils import process_run_results, train_model
+from utils.utils import process_run_results, train_test_model, update_tracker
 
 
-def run(strategy: Strategy1, client: SimulatedClient, test_run):
-
+def run(strategy: Strategy1, client: SimulatedClient, races):
     framework = FlumineSimulation(client=client)
     framework.add_strategy(strategy)
     market_files = strategy.market_filter["markets"]
@@ -25,8 +26,8 @@ def run(strategy: Strategy1, client: SimulatedClient, test_run):
         "total_back_matched_incorrect": 0,
         "total_lay_matched_correct": 0,
         "total_lay_matched_incorrect": 0,
-        "total_m_c_marg": 0,
-        "total_m_i_marg": 0,
+        "total_m_c_margin": 0,
+        "total_m_i_margin": 0,
         "total_green_margin": 0,
         "total_amount_gambled": 0,
         "actual_profit_plotter": [],
@@ -35,58 +36,52 @@ def run(strategy: Strategy1, client: SimulatedClient, test_run):
         "race_counter": 0,
         "total_q_correct": 0,
         "total_q_incorrect": 0,
-        "total_m_correct_margin": 0,
-        "total_m_incorrect_margin": 0,
         "total_q_margin": 0,
     }
 
     for index, market_file in enumerate(market_files):
-
         # for smaller test run
-        if test_run and index == 100:
+        if races and index == races:
             break
 
-        print(f"Race ({market_file}): {index}/{len(market_files)}")
         market_filter = {"markets": [market_file]}
+
+        print(f"Race {index + 1}/{races}")
+        print("lukas markets", framework.markets)
+
         strategy.set_market_filter(market_filter=market_filter)
+        strategy.reset_metrics()
 
         framework.run()
-        print("one finished run")
-        profit = 0
+        print(f"Race {index + 1} finished...")
         for market in framework.markets:
-            print(
-                "Profit: {0:.2f}".format(
-                    sum([o.simulated.profit for o in market.blotter])
-                )
+            # print(
+            #     "Profit: {0:.2f}".format(
+            #         sum([o.simulated.profit for o in market.blotter])
+            #     )
+            # )
+            strategy.metrics["profit"] += sum(
+                [o.simulated.profit for o in market.blotter]
             )
-            profit += sum([o.simulated.profit for o in market.blotter])
-
-        process_run_results(tracker, strategy.metrics)
-
-        tracker["actual_profit_plotter"].append(profit)  # NOTE double check this
-        tracker["expected_profit_plotter"].append(
-            strategy.metrics["m_c_marg"] + strategy.metrics["m_i_marg"]
-        )  # NOTE double check this
-
-        # for key, value in strategy.metrics.items():
-        #     metrics[key].append[value]
+        update_tracker(tracker, strategy.metrics)
+        pprint(tracker)
 
     return tracker
 
 
+# Might want to re-write to fit in strategy class file
 def get_strategy(
     strategy: str,
-    market_file: List[str] | str,
+    market_file,  #: List[str] | str,
     onedrive: Onedrive,
     model_name: str,
 ) -> Strategy1:
-
     market_file = market_file if isinstance(market_file, list) else [market_file]
 
     ticks_df = onedrive.get_folder_contents(
         target_folder="ticks", target_file="ticks.csv"
     )
-    model, clm, scaler = train_model(
+    model, clm, scaler = train_test_model(
         ticks_df,
         onedrive,
         model=model_name,
@@ -116,7 +111,9 @@ def piped_run(
     test_folder_path: str,
     bsps_path: str,
     model_name: str,
-    test_run=False,
+    races=None,
+    save=False,
+    log_lvl=logging.CRITICAL,
 ):
     logger = logging.getLogger(__name__)
     custom_format = "%(asctime) %(levelname) %(message)"
@@ -125,7 +122,7 @@ def piped_run(
     formatter.converter = time.gmtime
     log_handler.setFormatter(formatter)
     logger.addHandler(log_handler)
-    logger.setLevel(logging.CRITICAL)  # Set to logging.CRITICAL to speed up backtest
+    logger.setLevel(log_lvl)  # Set to logging.CRITICAL to speed up backtest
 
     bsp_df = onedrive.get_bsps(target_folder=bsps_path)
 
@@ -143,11 +140,10 @@ def piped_run(
         if float(f_name) in bsp_df["EVENT_ID"].values
     ]
     strategy_pick = get_strategy(strategy, file_paths, onedrive, model_name)
-    tracker = run(strategy_pick, client, test_run)
+    tracker = run(strategy_pick, client, races)
 
-    print(tracker["total_matched_correct"])
-    print(tracker["total_matched_incorrect"])
-    print("total correct margin is : ", tracker["total_m_c_marg"])
-    print("total incorrect margin is : ", tracker["total_m_i_marg"])
+    if save:
+        with open(f"results/{strategy}_results.yaml", "w") as f:
+            yaml.dump(tracker, f)
 
     return tracker

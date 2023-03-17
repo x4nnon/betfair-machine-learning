@@ -5,8 +5,8 @@ total_back_matched_correct: 10
 total_back_matched_incorrect: 5
 total_lay_matched_correct: 15
 total_lay_matched_incorrect: 7
-total_m_c_marg: 500.75
-total_m_i_marg: 200.25
+total_m_c_margin: 500.75
+total_m_i_margin: 200.25
 total_green_margin: 100.50
 total_amount_gambled: 5000
 actual_profit_plotter: [100, 200, 300, 400, 500]
@@ -15,6 +15,4 @@ green_plotter: [20, 30, 50, 80, 100]
 race_counter: 5
 total_q_correct: 8
 total_q_incorrect: 2
-total_m_correct_margin: 300.25
-total_m_incorrect_margin: 100.50
 total_q_margin: 50.75

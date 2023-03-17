@@ -22,10 +22,7 @@ class Onedrive:
         self.site_url = site_url
         self.auth = self.__authenticate(client_id, client_secret)
 
-    def __authenticate(
-        self, client_id: str, client_secret: str
-    ) -> list[ClientContext.web, ClientContext]:
-
+    def __authenticate(self, client_id: str, client_secret: str) -> tuple:
         ctx_auth = AuthenticationContext(self.site_url)
         if ctx_auth.acquire_token_for_app(
             client_id=client_id,
@@ -48,7 +45,6 @@ class Onedrive:
         ctx.execute_query()
 
     def __get_file_data(self, f, ctx, csv):
-
         file_relative_url = f.properties["ServerRelativeUrl"]
 
         if not csv:
@@ -118,7 +114,6 @@ class Onedrive:
                         return files_lst
 
                     for f in files:
-
                         f_name = f.properties["Name"]
                         if target_file and target_file != f_name:
                             continue
@@ -137,7 +132,6 @@ class Onedrive:
             print("Problem getting folder content: ", e)
 
     def get_train_test_df(self, target_folder: str = "Analysis_files"):
-
         # Get train df
         train_df = self.get_train_df(target_folder)
 
@@ -146,7 +140,7 @@ class Onedrive:
 
         return train_df, test_df
 
-    def get_test_df(self, target_folder: str):
+    def get_test_df(self, target_folder="Analysis_files"):
         test_df = pd.DataFrame()
         # Get test df
         for analysis_file in ANALYSIS_FILES_TEST:
@@ -171,7 +165,6 @@ class Onedrive:
         return train_df
 
     def download_test_folder(self, target_folder: str, csv=False):
-
         test_folder_names = self.get_folder_contents(
             target_folder=target_folder, only_folder_names=True, csv=csv
         )
@@ -181,7 +174,6 @@ class Onedrive:
 
         test_folder = list(zip(test_folder_names, test_folder_files))
         for f_name, f in test_folder:
-
             with open(f"test_folder/{f_name}", "wb") as local_file:
                 local_file.write(f)
 

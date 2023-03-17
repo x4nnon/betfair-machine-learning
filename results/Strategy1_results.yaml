@@ -1,0 +1,58 @@
+actual_profit_plotter:
+- !!python/object/apply:numpy.core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    uB6F61G0dsA=
+expected_profit_plotter:
+- !!python/object/apply:numpy.core.multiarray.scalar
+  - *id001
+  - !!binary |
+    4D0ffUmlGkA=
+green_plotter:
+- !!python/object/apply:numpy.core.multiarray.scalar
+  - *id001
+  - !!binary |
+    6z0ffUmlGkA=
+race_counter: 1
+total_amount_gambled: 0
+total_back_matched_correct: 0
+total_back_matched_incorrect: 0
+total_green_margin: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  6z0ffUmlGkA=
+total_lay_matched_correct: 0
+total_lay_matched_incorrect: 0
+total_m_c_margin: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  KRh1/l6mYkA=
+total_m_i_margin: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  Oh6MsjTRYcA=
+total_matched_correct: 115
+total_matched_incorrect: 146
+total_profit: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  uB6F61G0dsA=
+total_q_correct: 149
+total_q_incorrect: 167
+total_q_margin: !!python/object/apply:numpy.core.multiarray.scalar
+- *id001
+- !!binary |
+  tTznb/ZcWMA=
